@@ -39,6 +39,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: test
     runs-on: ubuntu-latest
+    environment: pypi
     env:
       UV_SYSTEM_PYTHON: 1
       PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}

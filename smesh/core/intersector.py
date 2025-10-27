@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Protocol, Optional, Iterable, Tuple, List, Dict
+from typing import Protocol, Optional, Iterable, Tuple, List, Dict, Any
 import numpy as np
 from .scene import MeshScene
 from .utils import get_logger, ensure_unit_vectors
@@ -158,19 +158,40 @@ class VTKIntersector:
         if not _HAVE_VTK:
             raise RuntimeError("VTK is not available.")
         self._obb_tree = obb_tree
+        self._locator: Optional[Any] = None
+        self._cached_scene_id: Optional[int] = None
+        self._cached_scene_mtime: Optional[int] = None
 
-    def intersect(self, scene: MeshScene, bundle: RayBundle) -> RayHits:
+    def _build_locator(self, scene: MeshScene) -> None:
         poly = scene.vtk_polydata()
-
         if self._obb_tree:
             tree = vtk.vtkOBBTree()
             tree.SetDataSet(poly)
             tree.BuildLocator()
-            locator = tree
+            locator: Any = tree
         else:
             locator = vtk.vtkCellLocator()
             locator.SetDataSet(poly)
             locator.BuildLocator()
+        self._locator = locator
+        self._cached_scene_id = id(scene)
+        self._cached_scene_mtime = poly.GetMTime() if hasattr(poly, "GetMTime") else None
+
+    def _ensure_locator(self, scene: MeshScene) -> Any:
+        poly = scene.vtk_polydata()
+        mtime = poly.GetMTime() if hasattr(poly, "GetMTime") else None
+        needs_rebuild = (
+            self._locator is None
+            or self._cached_scene_id is not id(scene)
+            or (self._cached_scene_mtime is not None and mtime is not None and mtime != self._cached_scene_mtime)
+        )
+        if needs_rebuild:
+            self._build_locator(scene)
+        assert self._locator is not None
+        return self._locator
+
+    def intersect(self, scene: MeshScene, bundle: RayBundle) -> RayHits:
+        locator = self._ensure_locator(scene)
 
         origins = np.asarray(bundle.origins, dtype=np.float64)
         dirs = np.asarray(bundle.directions, dtype=np.float64)
@@ -260,15 +281,19 @@ class EmbreeIntersector:
     def __init__(self) -> None:
         if not _HAVE_EMBREE:
             raise RuntimeError("pyembree not available. pip install trimesh[ray].")
-        self._inter = None
+        self._inter: Optional[ray_pyembree.RayMeshIntersector] = None
+        self._cached_scene_id: Optional[int] = None
 
     def _ensure_intersector(self, scene: MeshScene) -> None:
-        if self._inter is not None:
+        if self._inter is not None and self._cached_scene_id is id(scene):
             return
-        # Build trimesh object from VTK or path
+        tm = None
         if hasattr(scene, "_trimesh") and scene._trimesh is not None:
             tm = scene._trimesh
-        else:
+        elif scene.has_numpy_mesh():
+            verts, faces = scene.triangle_arrays()
+            tm = trimesh.Trimesh(vertices=verts, faces=faces, process=False)
+        elif _HAVE_VTK:
             # Convert vtkPolyData to trimesh
             poly = scene.vtk_polydata()
             import numpy as np
@@ -276,7 +301,10 @@ class EmbreeIntersector:
             pts = vtk_to_numpy(poly.GetPoints().GetData())
             faces = vtk_to_numpy(poly.GetPolys().GetData()).reshape(-1, 4)[:, 1:4]
             tm = trimesh.Trimesh(vertices=pts, faces=faces, process=False)
+        if tm is None:
+            raise RuntimeError("EmbreeIntersector requires scene.triangle_arrays() or VTK support.")
         self._inter = ray_pyembree.RayMeshIntersector(tm)
+        self._cached_scene_id = id(scene)
 
     def intersect(self, scene: MeshScene, bundle: RayBundle) -> RayHits:
         self._ensure_intersector(scene)

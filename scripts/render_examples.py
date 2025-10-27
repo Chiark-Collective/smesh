@@ -61,7 +61,7 @@ def run_example(name: str, config_path: Path, overwrite: bool = True, log_level:
 
 def _load_points(path: Path) -> np.ndarray:
     ext = path.suffix.lower()
-    if ext in {".npz", ".npz"}:
+    if ext == ".npz":
         with np.load(path) as data:
             xyz = data["xyz"]
     elif ext in {".las", ".laz"}:

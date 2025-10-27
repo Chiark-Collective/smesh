@@ -200,22 +200,27 @@ class LasWriter:
 class PlyWriter:
     def __init__(self, path: str) -> None:
         self.path = path
+        self._xyz_chunks: List[np.ndarray] = []
 
     def write_batch(self, batch: PointBatch) -> None:
-        # Very simple ASCII PLY for xyz only
+        self._xyz_chunks.append(batch.xyz.astype(np.float32, copy=False))
+
+    def close(self) -> None:
+        if not self._xyz_chunks:
+            return
+        # Very simple ASCII PLY for xyz only (buffered, written once on close)
         path = pathlib.Path(self.path)
         path.parent.mkdir(parents=True, exist_ok=True)
+        xyz = np.vstack(self._xyz_chunks)
         with open(path, "w", encoding="utf-8") as f:
-            n = len(batch.xyz)
+            n = len(xyz)
             f.write("ply\nformat ascii 1.0\n")
             f.write(f"element vertex {n}\n")
             f.write("property float x\nproperty float y\nproperty float z\n")
             f.write("end_header\n")
-            for x, y, z in batch.xyz:
-                f.write(f"{x} {y} {z}\n")
-
-    def close(self) -> None:
-        pass
+            for x, y, z in xyz:
+                f.write(f"{float(x)} {float(y)} {float(z)}\n")
+        self._xyz_chunks.clear()
 
 
 class NpzWriter:
@@ -234,13 +239,24 @@ class NpzWriter:
         # Concatenate
         xyz = np.vstack([b.xyz for b in self._batches])
         all_keys = sorted({k for b in self._batches for k in b.attrs.keys()})
+        # Map each attr key to (tail_shape, dtype) from first batch that provides it
+        key_meta: Dict[str, Tuple[Tuple[int, ...], np.dtype]] = {}
+        for b in self._batches:
+            for k, v in b.attrs.items():
+                if k not in key_meta:
+                    tail = v.shape[1:] if v.ndim >= 2 else ()
+                    key_meta[k] = (tail, v.dtype)
+
         out: Dict[str, np.ndarray] = {"xyz": xyz}
         for k in all_keys:
-            vals = []
+            tail_shape, dt = key_meta[k]
+            vals: List[np.ndarray] = []
             for b in self._batches:
                 if k in b.attrs:
-                    vals.append(b.attrs[k])
+                    vals.append(b.attrs[k].astype(dt, copy=False))
                 else:
-                    vals.append(np.zeros((len(b.xyz),) + ((b.attrs[k].shape[1],) if b.attrs[k].ndim==2 else ()), dtype=b.attrs[k].dtype))  # type: ignore
+                    filler_shape = (len(b.xyz),) + tail_shape
+                    vals.append(np.zeros(filler_shape, dtype=dt))
             out[k] = np.concatenate(vals, axis=0)
         np.savez_compressed(path, **out)
+        self._batches.clear()

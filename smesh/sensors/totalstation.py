@@ -41,9 +41,11 @@ class TotalStationSensor:
         origin = pose.t + pose.R @ self.lever_arm_t
         origins = np.tile(origin, (dirs_world.shape[0], 1))
 
-        gps_time = np.full((dirs_world.shape[0],), pose_time, dtype=np.float64)
+        rel_time = np.asarray(pattern_sample.relative_time_s, dtype=np.float64)
+        gps_time = pose_time + rel_time
         meta = {
-            "gps_time": gps_time,
+            "gps_time": gps_time.astype(np.float64, copy=False),
+            "relative_time_s": rel_time,
         }
         for key, value in pattern_sample.meta.items():
             meta[key] = value

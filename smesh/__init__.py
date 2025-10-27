@@ -24,6 +24,7 @@ from .core.attributes import (
     GpsTimeComputer, BeamFootprintComputer
 )
 from .core.sampler import Sampler, SamplerConfig
+from .sensors.lidar import LidarSensor
 from .sensors.totalstation import TotalStationSensor
 from .sensors.camera import CameraSensor
 from .sensors.patterns import CameraPattern

@@ -186,6 +186,11 @@ def test_total_station_sensor_single_batch() -> None:
     assert bundle.origins.shape[0] == bundle.directions.shape[0]
     assert np.allclose(bundle.origins[:, 2], 10.0)
     assert "pixel_u" in bundle.meta and "pixel_v" in bundle.meta
+    gps = bundle.meta["gps_time"]
+    assert gps.shape[0] == bundle.origins.shape[0]
+    assert np.all(np.diff(gps) >= 0.0)
+    assert np.ptp(gps) > 0.0
+    assert "relative_time_s" in bundle.meta
 
 
 def test_camera_sensor_frames_and_metadata() -> None:

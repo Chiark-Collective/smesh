@@ -17,6 +17,7 @@ class AttributeComputer:
 
 class RangeComputer(AttributeComputer):
     name = "range"
+    requires = {"_ray_hit_distance"}
     produces = {"range_m"}
     def __init__(self, ray_origins: Optional[np.ndarray] = None) -> None:
         self._ray_origins = ray_origins
@@ -34,6 +35,7 @@ class RangeComputer(AttributeComputer):
 
 class ReturnNumberComputer(AttributeComputer):
     name = "returns"
+    requires = {"_ray_index", "_hit_count_per_ray"}
     produces = {"return_number", "number_of_returns"}
     def compute(self, batch: PointBatch, scene: MeshScene) -> None:
         ray_index = batch.attrs.get("_ray_index")
@@ -88,6 +90,7 @@ class IncidenceAngleComputer(AttributeComputer):
 
 class ScanAngleComputer(AttributeComputer):
     name = "scan_angle"
+    requires = {"_scan_angle_deg_per_ray", "_ray_index"}
     produces = {"scan_angle_deg"}
     def __init__(self, mode: str = "deg") -> None:
         self.mode = mode
@@ -140,6 +143,7 @@ class ColorNormalProbe(AttributeComputer):
 
 class GpsTimeComputer(AttributeComputer):
     name = "gps_time"
+    requires = {"_gps_time_per_ray", "_ray_index"}
     produces = {"gps_time"}
     def __init__(self, start_time_s: float = 0.0) -> None:
         self.start = float(start_time_s)
@@ -152,6 +156,7 @@ class GpsTimeComputer(AttributeComputer):
 
 class BeamFootprintComputer(AttributeComputer):
     name = "beam_footprint"
+    requires = {"range_m"}
     produces = {"beam_footprint_m"}
     def __init__(self, divergence_mrad: float = 0.3) -> None:
         self.div_mrad = float(divergence_mrad)

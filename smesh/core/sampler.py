@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Iterable, Optional, Sequence
+from typing import List, Dict, Any, Iterable, Optional, Sequence, Set
 import numpy as np
 
 from .scene import MeshScene
@@ -35,6 +35,12 @@ _ATTR_FACTORY: Dict[str, Any] = {
     "beam_footprint": BeamFootprintComputer,
 }
 
+_PRODUCER_BY_ATTR: Dict[str, str] = {}
+for _name, _cls in _ATTR_FACTORY.items():
+    produces = getattr(_cls, "produces", set())
+    for attr in produces:
+        _PRODUCER_BY_ATTR[attr] = _name
+
 class Sampler:
     """High-level orchestrator.
 
@@ -58,11 +64,29 @@ class Sampler:
                 self.intersector = AutoIntersector()
 
     def _build_attribute_chain(self) -> List[AttributeComputer]:
-        chain: List[AttributeComputer] = []
-        for name in self.cfg.attributes:
+        resolved: List[str] = []
+        added: Set[str] = set()
+
+        def add_with_dependencies(name: str) -> None:
+            if name in added:
+                return
             if name not in _ATTR_FACTORY:
                 _log.warning("Unknown attribute '%s' – skipping.", name)
-                continue
+                return
+            cls = _ATTR_FACTORY[name]
+            requires = getattr(cls, "requires", set())
+            for attr in sorted(requires):
+                producer = _PRODUCER_BY_ATTR.get(attr)
+                if producer is not None:
+                    add_with_dependencies(producer)
+            added.add(name)
+            resolved.append(name)
+
+        for name in self.cfg.attributes:
+            add_with_dependencies(name)
+
+        chain: List[AttributeComputer] = []
+        for name in resolved:
             if name == "range":
                 chain.append(RangeComputer())
             elif name == "beam_footprint":
@@ -70,6 +94,36 @@ class Sampler:
             else:
                 chain.append(_ATTR_FACTORY[name]())
         return chain
+
+    def _ray_bundle_chunks(self, bundle: RayBundle) -> Iterable[RayBundle]:
+        limit = int(self.cfg.batch_size_rays or 0)
+        n_rays = len(bundle.origins)
+        if limit <= 0 or n_rays <= limit:
+            yield bundle
+            return
+
+        meta = getattr(bundle, "meta", {}) or {}
+        per_ray_meta: Dict[str, np.ndarray] = {}
+        static_meta: Dict[str, Any] = {}
+        for key, value in meta.items():
+            arr = value if isinstance(value, np.ndarray) else np.asarray(value)
+            if arr.ndim >= 1 and arr.shape[0] == n_rays:
+                per_ray_meta[key] = arr
+            else:
+                static_meta[key] = value
+
+        for start in range(0, n_rays, limit):
+            stop = min(start + limit, n_rays)
+            chunk_meta: Dict[str, Any] = dict(static_meta)
+            for key, arr in per_ray_meta.items():
+                chunk_meta[key] = arr[start:stop]
+            yield RayBundle(
+                origins=bundle.origins[start:stop],
+                directions=bundle.directions[start:stop],
+                max_range=bundle.max_range,
+                multi_hit=bundle.multi_hit,
+                meta=chunk_meta,
+            )
 
     def run_to_writer(self, writer, ray_batches: Iterable[RayBundle]) -> Dict[str, Any]:
         """Stream: for each RayBundle → intersect → PointBatch → attributes → write.
@@ -83,47 +137,45 @@ class Sampler:
 
         for bundle in ray_batches:
             total_rays += len(bundle.origins)
-            hits = self.intersector.intersect(self.scene, bundle)
-            if hits.points.shape[0] == 0:
-                continue
-
-            # Map per-ray metadata to per-hit arrays
-            per_hit_attrs: Dict[str, np.ndarray] = {
-                "_ray_index": hits.ray_index,
-                "_hit_count_per_ray": hits.hit_count_per_ray,
-                "_ray_hit_distance": hits.distances,
-                "_ray_dir": bundle.directions[hits.ray_index],
-            }
-            meta = getattr(bundle, "meta", {})
-            n_rays = len(bundle.origins)
-            for key, value in meta.items():
-                arr = np.asarray(value)
-                if arr.ndim >= 1 and arr.shape[0] == n_rays:
-                    per_hit_attrs[f"_{key}_per_ray"] = arr
-                    mapped = arr[hits.ray_index]
-                    if key == "scan_angle_deg":
-                        per_hit_attrs["_scan_angle_deg_per_ray"] = arr
-                    per_hit_attrs[key] = mapped.astype(arr.dtype, copy=False)
-                elif arr.ndim >= 1 and arr.shape[0] == len(hits.points):
-                    per_hit_attrs[key] = arr
-                else:
-                    per_hit_attrs[key] = arr
-
-            batch = PointBatch(xyz=hits.points, attrs=per_hit_attrs)
-
-            # Run attribute computers
-            for comp in attrs_chain:
-                comp.compute(batch, self.scene)
-
-            # Always good to remove internal temp attrs before writing
-            for k in [k for k in list(batch.attrs.keys()) if k.startswith("_")]:
-                # Keep '_ray_index' if returns computation hasn't run
-                if k == "_ray_index" and ("return_number" not in batch.attrs):
+            for chunk in self._ray_bundle_chunks(bundle):
+                hits = self.intersector.intersect(self.scene, chunk)
+                if hits.points.shape[0] == 0:
                     continue
-                del batch.attrs[k]
 
-            writer.write_batch(batch)
-            total_points += len(batch.xyz)
+                # Map per-ray metadata to per-hit arrays
+                per_hit_attrs: Dict[str, np.ndarray] = {
+                    "_ray_index": hits.ray_index,
+                    "_hit_count_per_ray": hits.hit_count_per_ray,
+                    "_ray_hit_distance": hits.distances,
+                    "_ray_dir": chunk.directions[hits.ray_index],
+                }
+                meta = getattr(chunk, "meta", {})
+                n_rays = len(chunk.origins)
+                for key, value in meta.items():
+                    arr = np.asarray(value)
+                    if arr.ndim >= 1 and arr.shape[0] == n_rays:
+                        per_hit_attrs[f"_{key}_per_ray"] = arr
+                        mapped = arr[hits.ray_index]
+                        if key == "scan_angle_deg":
+                            per_hit_attrs["_scan_angle_deg_per_ray"] = arr
+                        per_hit_attrs[key] = mapped.astype(arr.dtype, copy=False)
+                    elif arr.ndim >= 1 and arr.shape[0] == len(hits.points):
+                        per_hit_attrs[key] = arr
+                    else:
+                        per_hit_attrs[key] = arr
+
+                batch = PointBatch(xyz=hits.points, attrs=per_hit_attrs)
+
+                # Run attribute computers
+                for comp in attrs_chain:
+                    comp.compute(batch, self.scene)
+
+                # Drop private attrs before writing
+                for k in [k for k in list(batch.attrs.keys()) if k.startswith("_")]:
+                    del batch.attrs[k]
+
+                writer.write_batch(batch)
+                total_points += len(batch.xyz)
 
         writer.close()
         stats = {"rays": total_rays, "points": total_points}

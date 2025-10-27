@@ -1,0 +1,36 @@
+type: lidar
+mesh:
+  path: ../../meshes/preview_scene.ply
+trajectory:
+  kind: lawnmower
+  altitude_m: 2.0
+  speed_mps: 5.0
+  line_spacing_m: 8.0
+  heading_deg: 90.0
+pattern:
+  kind: spinning
+  vertical_angles_deg: [-10.0, -5.0, 0.0, 5.0, 10.0]
+  rpm: 180.0
+  prf_hz: 4000
+sensor:
+  kind: lidar
+  max_range_m: 80.0
+  multi_return: true
+  beam_divergence_mrad: 0.4
+  num_lines: 4
+noise:
+  kind: lidar
+  sigma_range_m: 0.03
+  sigma_angle_deg: 0.1
+  keep_prob: 0.98
+sampler:
+  batch_size_rays: 20000
+attributes:
+  - range
+  - scan_angle
+  - returns
+  - gps_time
+output:
+  path: mobile_preview.las
+  format: las
+seed: 99

@@ -1,0 +1,23 @@
+type: totalstation
+mesh:
+  path: ../meshes/demo_scene.ply
+trajectory:
+  kind: static
+  xyz: [0.0, -40.0, 15.0]
+pattern:
+  kind: raster
+  az_range_deg: [-45.0, 45.0]
+  el_range_deg: [-80.0, -5.0]
+  step_deg: 1.0
+sensor:
+  kind: totalstation
+  max_range_m: 250.0
+  boresight_rpy_deg: [0.0, 90.0, 0.0]
+attributes:
+  - range
+  - incidence
+  - scan_angle
+output:
+  path: total_station.npz
+  format: npz
+seed: 101

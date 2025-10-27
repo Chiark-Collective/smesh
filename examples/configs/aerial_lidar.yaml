@@ -1,0 +1,40 @@
+type: lidar
+mesh:
+  path: ../meshes/demo_scene.ply
+trajectory:
+  kind: lawnmower
+  altitude_m: 50.0
+  speed_mps: 35.0
+  line_spacing_m: 60.0
+pattern:
+  kind: oscillating
+  fov_deg: 60.0
+  line_rate_hz: 80.0
+  pulses_per_line: 1600
+sensor:
+  kind: lidar
+  max_range_m: 600.0
+  multi_return: true
+  beam_divergence_mrad: 0.3
+  num_lines: 12
+noise:
+  kind: lidar
+  sigma_range_m: 0.03
+  sigma_angle_deg: 0.05
+  keep_prob: 0.995
+sampler:
+  batch_size_rays: 50000
+attributes:
+  - range
+  - incidence
+  - scan_angle
+  - intensity
+  - returns
+  - beam_footprint
+  - gps_time
+output:
+  path: aerial_lidar.laz
+  format: laz
+  compress: true
+engine: auto
+seed: 42

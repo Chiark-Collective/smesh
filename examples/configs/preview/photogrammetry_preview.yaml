@@ -1,0 +1,27 @@
+type: photogrammetry
+mesh:
+  path: ../../meshes/preview_scene.ply
+trajectory:
+  kind: lawnmower
+  altitude_m: 40.0
+  speed_mps: 15.0
+  line_spacing_m: 80.0
+pattern:
+  kind: camera
+  resolution_px: [1024, 768]
+  focal_px: [800.0, 800.0]
+  pixel_stride: 32
+sensor:
+  kind: camera
+  num_frames: 2
+noise:
+  kind: photogrammetry
+  pixel_sigma: 0.1
+attributes:
+  - range
+  - incidence
+  - color_normal
+output:
+  path: photogrammetry_preview.npz
+  format: npz
+seed: 33

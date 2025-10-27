@@ -41,6 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       UV_SYSTEM_PYTHON: 1
+      PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -49,13 +50,25 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Load .env if present
+        if: hashFiles('.env') != ''
+        shell: bash
+        run: |
+          set -a
+          source .env
+          set +a
+          if [ -n "${PYPI_API_TOKEN:-}" ]; then
+            echo "PYPI_API_TOKEN=$PYPI_API_TOKEN" >> "$GITHUB_ENV"
+          fi
+
+      - name: Install build tooling
+        run: uv pip install --system twine
+
       - name: Build wheel and sdist
         run: uv build
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: dist
-          print-hash: true
-          skip-existing: true
-          password: ${{ secrets.PYPI_API_TOKEN }}
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ env.PYPI_API_TOKEN }}
+        run: twine upload --skip-existing dist/*

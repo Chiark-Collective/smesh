@@ -20,6 +20,16 @@ source .venv/bin/activate
 pip install -e .
 ```
 
+### Installing straight from GitHub
+
+To pull the latest main branch directly into a virtualenv:
+
+```bash
+pip install git+https://github.com/Chiark-Collective/smesh.git
+```
+
+For a reproducible install, pin to a tag (e.g., `git+https://github.com/Chiark-Collective/smesh.git@v0.1.0`).
+
 ## Quick taste
 
 ```python

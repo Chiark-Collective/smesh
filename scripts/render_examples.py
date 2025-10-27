@@ -81,28 +81,45 @@ def render_points(name: str, xyz: np.ndarray, max_points: int = 200_000) -> Path
         idx = rng.choice(xyz.shape[0], size=max_points, replace=False)
         xyz = xyz[idx]
 
+    x = xyz[:, 0]
+    y = xyz[:, 1]
     z = xyz[:, 2]
-    z_min, z_max = np.min(z), np.max(z)
-    if np.isclose(z_min, z_max):
+    # Use quantile stretch so nearly flat scenes still show contrast
+    z_lo, z_hi = np.quantile(z, [0.02, 0.98])
+    if np.isclose(z_lo, z_hi):
         colors = np.full_like(z, 0.5, dtype=np.float32)
     else:
-        colors = (z - z_min) / (z_max - z_min)
+        colors = np.clip((z - z_lo) / (z_hi - z_lo), 0.0, 1.0).astype(np.float32, copy=False)
 
     fig = plt.figure(figsize=(8, 6), dpi=150)
     ax_top = fig.add_subplot(2, 1, 1)
-    sc = ax_top.scatter(xyz[:, 0], xyz[:, 1], c=colors, s=1, cmap="viridis")
+    sc = ax_top.scatter(x, y, c=colors, s=1, cmap="viridis")
     ax_top.set_title(f"{name.replace('_', ' ').title()} – XY (top-down)")
     ax_top.set_xlabel("X [m]")
     ax_top.set_ylabel("Y [m]")
     ax_top.set_aspect("equal", adjustable="box")
+    # Pad extents so extremely skinny strips still have some breathing room
+    x_min, x_max = np.min(x), np.max(x)
+    y_min, y_max = np.min(y), np.max(y)
+    x_range = x_max - x_min
+    y_range = y_max - y_min
+    x_pad = 0.05 * x_range if x_range > 0 else 1.0
+    target_y_range = max(y_range, 0.2 * x_range)
+    extra_y = max(0.0, target_y_range - y_range)
+    y_pad = 0.05 * target_y_range + extra_y / 2.0
+    ax_top.set_xlim(x_min - x_pad, x_max + x_pad)
+    ax_top.set_ylim(y_min - y_pad, y_max + y_pad)
     fig.colorbar(sc, ax=ax_top, fraction=0.046, pad=0.04, label="Normalized height")
 
     ax_side = fig.add_subplot(2, 1, 2)
-    ax_side.scatter(xyz[:, 0], xyz[:, 2], c=colors, s=1, cmap="viridis")
+    ax_side.scatter(x, z, c=colors, s=1, cmap="viridis")
     ax_side.set_title("Elevation Profile (XZ)")
     ax_side.set_xlabel("X [m]")
     ax_side.set_ylabel("Z [m]")
-    ax_side.set_aspect("equal", adjustable="box")
+    z_min, z_max = np.min(z), np.max(z)
+    z_range = z_max - z_min
+    z_pad = 0.05 * z_range if z_range > 0 else 1.0
+    ax_side.set_ylim(z_min - z_pad, z_max + z_pad)
 
     fig.tight_layout()
     out_path = IMAGE_DIR / f"{name}.png"

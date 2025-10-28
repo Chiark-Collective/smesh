@@ -57,16 +57,17 @@ def _ramp(length: float, width: float, height: float, color: Tuple[int, int, int
     vertices = np.array([
         [-lx, -wy, 0.0],
         [lx, -wy, 0.0],
-        [lx, wy, hz],
+        [lx, wy, 0.0],
+        [-lx, wy, 0.0],
         [-lx, wy, hz],
-        [-lx, -wy, hz],
-        [lx, -wy, hz],
+        [lx, wy, hz],
     ], dtype=np.float32)
     faces = np.array([
-        [0, 1, 5], [0, 5, 4],  # base
-        [0, 4, 3], [0, 3, 2], [0, 2, 1],  # sides
-        [1, 2, 5],
-        [2, 3, 4],
+        [0, 2, 1], [0, 3, 2],  # base (downward facing)
+        [3, 5, 2], [3, 4, 5],  # back wall
+        [0, 4, 3],             # left wall
+        [1, 2, 5],             # right wall
+        [0, 1, 5], [0, 5, 4],  # sloped deck
     ], dtype=np.int64)
     colors = np.tile(np.asarray(color, dtype=np.uint8), (vertices.shape[0], 1))
     return vertices, faces, colors

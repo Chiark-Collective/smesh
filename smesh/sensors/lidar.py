@@ -50,12 +50,20 @@ class LidarSensor:
 
         if self.num_lines is not None:
             count = self.num_lines
+            if count <= 0:
+                raise ValueError("num_lines must be positive when provided.")
+            if count == 1:
+                return np.asarray([start_time], dtype=np.float64)
+            if np.isclose(end_time, start_time):
+                offsets = np.arange(count, dtype=np.float64) * max(cadence, 1e-9)
+                return start_time + offsets
+            return np.linspace(start_time, end_time, count, dtype=np.float64)
         else:
             duration = max(end_time - start_time, 0.0)
             count = max(1, int(np.floor(duration / cadence)) + 1)
-        indices = np.arange(count, dtype=np.int64)
-        line_times = start_time + indices * cadence
-        return line_times
+            indices = np.arange(count, dtype=np.int64)
+            line_times = start_time + indices * cadence
+            return line_times
 
     def batches(self, rng: Optional[np.random.Generator] = None) -> Iterable[SensorBatch]:
         if rng is None:

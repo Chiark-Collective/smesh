@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, List, Sequence, Tuple
+from typing import Iterable, List, Sequence, Tuple, Literal
 
 import numpy as np
 
@@ -116,16 +116,28 @@ class LawnmowerTrajectory(Trajectory):
         line_spacing_m: float,
         heading_deg: float = 0.0,
         start_time_s: float = 0.0,
+        altitude_mode: Literal["above_top", "above_ground", "absolute"] = "above_top",
     ) -> None:
-        if altitude_m <= 0.0:
-            raise ValueError("altitude_m must be positive.")
+        if altitude_mode not in {"above_top", "above_ground", "absolute"}:
+            raise ValueError("altitude_mode must be one of 'above_top', 'above_ground', or 'absolute'.")
+        if altitude_mode != "absolute" and altitude_m <= 0.0:
+            raise ValueError("altitude_m must be positive for relative altitude modes.")
         if speed_mps <= 0.0:
             raise ValueError("speed_mps must be positive.")
         if line_spacing_m <= 0.0:
             raise ValueError("line_spacing_m must be positive.")
 
         bounds = scene.bounds()
-        xmin, xmax, ymin, ymax, _, zmax = bounds
+        xmin, xmax, ymin, ymax, zmin, zmax = bounds
+
+        if altitude_mode == "above_top":
+            altitude = float(zmax + altitude_m)
+        elif altitude_mode == "above_ground":
+            if altitude_m < 0.0:
+                raise ValueError("altitude_m must be non-negative when altitude_mode='above_ground'.")
+            altitude = float(zmin + altitude_m)
+        else:  # absolute
+            altitude = float(altitude_m)
 
         heading_rad = np.deg2rad(heading_deg)
         forward = np.array([np.cos(heading_rad), np.sin(heading_rad)])
@@ -148,7 +160,6 @@ class LawnmowerTrajectory(Trajectory):
         width_cross = max_c - min_c
         num_lines = max(1, int(np.ceil(width_cross / line_spacing_m)) + 1)
 
-        altitude = float(zmax + altitude_m)
         points: List[np.ndarray] = []
         for line_idx in range(num_lines):
             c_val = min_c + line_idx * line_spacing_m

@@ -4,6 +4,7 @@ mesh:
 trajectory:
   kind: lawnmower
   altitude_m: 2.0
+  altitude_mode: above_ground
   speed_mps: 5.0
   line_spacing_m: 8.0
   heading_deg: 90.0
@@ -11,13 +12,13 @@ pattern:
   kind: spinning
   vertical_angles_deg: [-10.0, -5.0, 0.0, 5.0, 10.0]
   rpm: 180.0
-  prf_hz: 4000
+  prf_hz: 1200
 sensor:
   kind: lidar
   max_range_m: 80.0
   multi_return: true
   beam_divergence_mrad: 0.4
-  num_lines: 4
+  num_lines: 24
 noise:
   kind: lidar
   sigma_range_m: 0.03

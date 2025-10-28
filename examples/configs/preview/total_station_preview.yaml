@@ -6,13 +6,13 @@ trajectory:
   xyz: [0.0, -8.0, 6.0]
 pattern:
   kind: raster
-  az_range_deg: [-15.0, 15.0]
-  el_range_deg: [-85.0, -30.0]
+  az_range_deg: [-35.0, 35.0]
+  el_range_deg: [-30.0, 55.0]
   step_deg: 5.0
 sensor:
   kind: totalstation
   max_range_m: 120.0
-  boresight_rpy_deg: [0.0, 90.0, 0.0]
+  boresight_rpy_deg: [0.0, 0.0, 90.0]
 attributes:
   - range
   - incidence

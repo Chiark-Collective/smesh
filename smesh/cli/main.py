@@ -30,6 +30,8 @@ app = typer.Typer(help="Smesh sampling utilities")
 mesh_app = typer.Typer(help="Synthetic mesh helpers")
 app.add_typer(mesh_app, name="mesh")
 
+DEFAULT_LIDAR_ATTRIBUTES = ["range", "incidence", "scan_angle", "intensity", "returns", "gps_time"]
+
 
 def _configure_logging(level: str) -> None:
     numeric = getattr(logging, level.upper(), logging.INFO)
@@ -50,6 +52,7 @@ def _build_trajectory(cfg: ScenarioConfig, scene: MeshScene) -> Trajectory:
             line_spacing_m=traj_cfg.line_spacing_m,
             heading_deg=traj_cfg.heading_deg,
             start_time_s=traj_cfg.start_time_s,
+            altitude_mode=getattr(traj_cfg, "altitude_mode", "above_top"),
         )
     raise ValueError(f"Unsupported trajectory kind: {traj_cfg.kind}")
 
@@ -283,6 +286,104 @@ def run(
 
     attribute_override = list(attribute) if attribute else None
     _execute_sample(config, output, seed, engine, attribute_override, log_level)
+
+
+@app.command("sample-lidar")
+def sample_lidar_cli(
+    mesh: Path = typer.Option(Path("examples/meshes/preview_scene.ply"), "--mesh", help="Input mesh path.", exists=True, file_okay=True, dir_okay=False, readable=True),
+    output: Path = typer.Option(Path("examples/outputs/aerial_lidar_cli.las"), "--output", "-o", help="Output point cloud path (.las/.laz/.npz/.ply)."),
+    altitude_m: float = typer.Option(40.0, "--altitude-m", help="Altitude parameter passed to the lawnmower trajectory."),
+    altitude_mode: str = typer.Option("above_top", "--altitude-mode", help="Altitude interpretation: above_top, above_ground, or absolute."),
+    speed_mps: float = typer.Option(20.0, "--speed-mps", help="Platform speed in metres per second."),
+    line_spacing_m: float = typer.Option(30.0, "--line-spacing-m", help="Cross-track spacing between sweeps."),
+    heading_deg: float = typer.Option(0.0, "--heading-deg", help="Heading of the flight path in degrees."),
+    fov_deg: float = typer.Option(50.0, "--fov-deg", help="Oscillating mirror field of view in degrees."),
+    line_rate_hz: float = typer.Option(20.0, "--line-rate-hz", help="Oscillation line rate in Hz."),
+    pulses_per_line: int = typer.Option(200, "--pulses-per-line", help="Pulses emitted per line."),
+    max_range_m: float = typer.Option(200.0, "--max-range-m", help="Maximum range for valid returns."),
+    beam_divergence_mrad: float = typer.Option(0.3, "--beam-divergence-mrad", help="Beam divergence used for footprint estimation."),
+    num_lines: Optional[int] = typer.Option(None, "--num-lines", help="Number of scan lines to distribute across the trajectory."),
+    sigma_range_m: float = typer.Option(0.05, "--sigma-range-m", help="Per-ray range noise (metres)."),
+    sigma_angle_deg: float = typer.Option(0.1, "--sigma-angle-deg", help="Per-ray angular noise (degrees)."),
+    keep_prob: float = typer.Option(0.99, "--keep-prob", help="Probability of keeping each ray after dropout."),
+    sigma_time_s: float = typer.Option(0.0, "--sigma-time-s", help="Timestamp jitter applied by the noise model (seconds)."),
+    batch_size_rays: int = typer.Option(20_000, "--batch-size", help="Sampler batch size in rays."),
+    seed: int = typer.Option(101, "--seed", help="Random seed for deterministic sampling."),
+    attribute: List[str] = typer.Option([], "--attribute", "-a", help="Attributes to compute (defaults to preview set)."),
+    log_level: str = typer.Option("INFO", "--log-level", help="Logging level (e.g. INFO, DEBUG)."),
+) -> None:
+    """Quick aerial-style LiDAR sampling driven entirely from CLI options."""
+
+    if keep_prob < 0.0 or keep_prob > 1.0:
+        raise typer.BadParameter("keep_prob must be within [0, 1].", param_hint="--keep-prob")
+    allowed_modes = {"above_top", "above_ground", "absolute"}
+    if altitude_mode not in allowed_modes:
+        raise typer.BadParameter(f"altitude_mode must be one of {sorted(allowed_modes)}.", param_hint="--altitude-mode")
+
+    attrs = attribute or DEFAULT_LIDAR_ATTRIBUTES
+    _configure_logging(log_level)
+
+    mesh = mesh.resolve()
+    output = output.resolve()
+    output.parent.mkdir(parents=True, exist_ok=True)
+
+    scene = MeshScene(mesh)
+    trajectory = LawnmowerTrajectory(
+        scene,
+        altitude_m=altitude_m,
+        speed_mps=speed_mps,
+        line_spacing_m=line_spacing_m,
+        heading_deg=heading_deg,
+        start_time_s=0.0,
+        altitude_mode=altitude_mode,  # type: ignore[arg-type]
+    )
+    pattern = OscillatingMirrorPattern(
+        fov_deg=fov_deg,
+        line_rate_hz=line_rate_hz,
+        pulses_per_line=pulses_per_line,
+    )
+
+    noise = None
+    if sigma_range_m > 0 or sigma_angle_deg > 0 or sigma_time_s > 0 or keep_prob < 1.0:
+        noise = LidarNoise(
+            sigma_range_m=sigma_range_m,
+            sigma_angle_deg=sigma_angle_deg,
+            keep_prob=keep_prob,
+            sigma_time_s=sigma_time_s,
+        )
+
+    sensor = LidarSensor(
+        pattern=pattern,
+        trajectory=trajectory,
+        noise=noise,
+        max_range_m=max_range_m,
+        multi_return=True,
+        num_lines=num_lines,
+    )
+
+    sampler_cfg = SamplerConfig(
+        intersector="auto",
+        batch_size_rays=batch_size_rays,
+        attributes=list(attrs),
+        beam_divergence_mrad=beam_divergence_mrad,
+    )
+    sampler = Sampler(scene, cfg=sampler_cfg)
+
+    fmt = output.suffix.lower()
+    if fmt == ".las":
+        writer = LasWriter(str(output), compress=False)
+    elif fmt == ".laz":
+        writer = LasWriter(str(output), compress=True)
+    elif fmt == ".npz":
+        writer = NpzWriter(str(output))
+    elif fmt == ".ply":
+        writer = PlyWriter(str(output))
+    else:
+        raise typer.BadParameter("Output must end with .las, .laz, .npz, or .ply", param_hint="--output")
+
+    rng = np.random.default_rng(seed)
+    stats = sampler.run_to_writer(writer, _ray_bundle_iter(sensor, rng))
+    typer.echo(f"Completed {stats['points']} points from {stats['rays']} rays → {output}")
 
 
 @mesh_app.command("generate")

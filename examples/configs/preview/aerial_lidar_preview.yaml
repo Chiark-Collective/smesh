@@ -17,7 +17,6 @@ sensor:
   max_range_m: 200.0
   multi_return: true
   beam_divergence_mrad: 0.4
-  num_lines: 4
 noise:
   kind: lidar
   sigma_range_m: 0.05

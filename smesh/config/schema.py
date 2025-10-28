@@ -21,6 +21,7 @@ class StaticTrajectoryConfig(BaseModel):
 class LawnmowerTrajectoryConfig(BaseModel):
     kind: Literal["lawnmower"]
     altitude_m: float
+    altitude_mode: Literal["above_top", "above_ground", "absolute"] = "above_top"
     speed_mps: float
     line_spacing_m: float
     heading_deg: float = 0.0

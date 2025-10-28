@@ -74,7 +74,7 @@ python scripts/render_examples.py            # preview configs + raw mesh
 python scripts/render_examples.py --full     # full-resolution configs
 ```
 
-Outputs land in `examples/outputs/` and PNG composites in `examples/images/`.
+Outputs land in `examples/outputs/` and PNG composites in `examples/images/`. The raw-mesh baseline is rendered with VTK when available (falling back to a shaded Matplotlib view otherwise) so you can see the synthetic geometry before sampling.
 
 ## Workflow Examples
 

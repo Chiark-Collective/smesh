@@ -10,15 +10,18 @@ import laspy
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 from smesh.cli.main import _execute_sample  # type: ignore
 from smesh.config import load_config
 from smesh.core.scene import MeshScene
 
-try:
+try:  # pragma: no cover - optional dependency
+    import vtk  # type: ignore
     from vtk.util.numpy_support import vtk_to_numpy  # type: ignore
     _HAVE_VTK = True
 except Exception:  # pragma: no cover - optional dependency
+    vtk = None  # type: ignore
     vtk_to_numpy = None  # type: ignore
     _HAVE_VTK = False
 
@@ -78,44 +81,176 @@ def run_example(spec: ExampleSpec, overwrite: bool = True, log_level: str = "INF
     return out_path
 
 
-def _load_ascii_ply_vertices(path: Path) -> np.ndarray:
+def _parse_ascii_ply_mesh(path: Path) -> tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]:
     with path.open("r", encoding="utf-8") as fh:
-        header_complete = False
-        vertex_count: Optional[int] = None
+        vertex_count = 0
+        face_count = 0
+        vertex_props: list[str] = []
+        reading_vertices = False
         while True:
             line = fh.readline()
             if not line:
                 raise ValueError(f"Unexpected EOF while reading {path}")
             stripped = line.strip()
             if stripped.startswith("element vertex"):
-                parts = stripped.split()
-                vertex_count = int(parts[-1])
-            if stripped == "end_header":
-                header_complete = True
+                vertex_count = int(stripped.split()[-1])
+                reading_vertices = True
+            elif stripped.startswith("element face"):
+                face_count = int(stripped.split()[-1])
+                reading_vertices = False
+            elif stripped.startswith("property") and reading_vertices:
+                vertex_props.append(stripped.split()[-1])
+            elif stripped == "end_header":
                 break
-        if not header_complete or vertex_count is None:
-            raise ValueError(f"Could not parse vertex header for {path}")
-        vertices = []
-        for _ in range(vertex_count):
+
+        if vertex_count == 0:
+            raise ValueError(f"PLY file {path} missing vertex data")
+
+        prop_index = {name: idx for idx, name in enumerate(vertex_props)}
+        required = {"x", "y", "z"}
+        if not required.issubset(prop_index):
+            raise ValueError(f"PLY file {path} missing coordinates {required}")
+
+        has_colors = all(name in prop_index for name in ("red", "green", "blue"))
+        vertices = np.zeros((vertex_count, 3), dtype=np.float32)
+        colors: Optional[np.ndarray]
+        colors = np.zeros((vertex_count, 3), dtype=np.uint8) if has_colors else None
+
+        for idx in range(vertex_count):
             parts = fh.readline().split()
-            if len(parts) < 3:
+            if len(parts) < len(vertex_props):
                 raise ValueError(f"Malformed vertex line in {path}")
-            vertices.append([float(parts[0]), float(parts[1]), float(parts[2])])
-    return np.asarray(vertices, dtype=np.float32)
+            vertices[idx, 0] = float(parts[prop_index["x"]])
+            vertices[idx, 1] = float(parts[prop_index["y"]])
+            vertices[idx, 2] = float(parts[prop_index["z"]])
+            if colors is not None:
+                colors[idx, 0] = int(parts[prop_index["red"]])
+                colors[idx, 1] = int(parts[prop_index["green"]])
+                colors[idx, 2] = int(parts[prop_index["blue"]])
+
+        faces: list[list[int]] = []
+        for _ in range(face_count):
+            parts = fh.readline().split()
+            if not parts:
+                continue
+            polygon_size = int(parts[0])
+            indices = [int(p) for p in parts[1:1 + polygon_size]]
+            if polygon_size < 3:
+                continue
+            for j in range(1, polygon_size - 1):
+                faces.append([indices[0], indices[j], indices[j + 1]])
+
+    faces_array = np.asarray(faces, dtype=np.int32) if faces else np.empty((0, 3), dtype=np.int32)
+    return vertices, faces_array, colors
 
 
-def _load_mesh_vertices(mesh_path: Path) -> np.ndarray:
+def _render_mesh_vtk(mesh_path: Path, out_path: Path) -> None:
+    if not _HAVE_VTK or vtk is None:
+        raise RuntimeError("VTK is not available for mesh rendering")
+
     scene = MeshScene(mesh_path=str(mesh_path))
-    if _HAVE_VTK:
-        try:
-            poly = scene.vtk_polydata()
-            pts = poly.GetPoints()
-            if pts is not None and vtk_to_numpy is not None:
-                arr = vtk_to_numpy(pts.GetData()).astype(np.float32, copy=False)
-                return arr
-        except Exception:
-            pass
-    return _load_ascii_ply_vertices(mesh_path)
+    poly = scene.vtk_polydata()
+
+    mapper = vtk.vtkPolyDataMapper()
+    mapper.SetInputData(poly)
+
+    actor = vtk.vtkActor()
+    actor.SetMapper(mapper)
+    prop = actor.GetProperty()
+    prop.SetColor(0.78, 0.78, 0.78)
+    prop.SetAmbient(0.25)
+    prop.SetDiffuse(0.7)
+    prop.SetSpecular(0.25)
+    prop.SetSpecularPower(20.0)
+    prop.EdgeVisibilityOn()
+    prop.SetEdgeColor(0.45, 0.45, 0.45)
+    prop.SetLineWidth(0.5)
+
+    renderer = vtk.vtkRenderer()
+    renderer.AddActor(actor)
+    renderer.SetBackground(1.0, 1.0, 1.0)
+
+    bounds = poly.GetBounds()
+    center = (
+        0.5 * (bounds[0] + bounds[1]),
+        0.5 * (bounds[2] + bounds[3]),
+        0.5 * (bounds[4] + bounds[5]),
+    )
+    radius = max(bounds[1] - bounds[0], bounds[3] - bounds[2], bounds[5] - bounds[4]) * 0.5
+    radius = radius if radius > 0 else 1.0
+
+    camera = renderer.GetActiveCamera()
+    distance = radius * 2.6
+    camera.SetPosition(center[0] + distance, center[1] - distance, center[2] + distance * 0.9)
+    camera.SetFocalPoint(*center)
+    camera.SetViewUp(0.0, 0.0, 1.0)
+    camera.SetClippingRange(0.01, distance * 6.0)
+
+    light = vtk.vtkLight()
+    light.SetLightTypeToSceneLight()
+    light.SetPosition(center[0] + radius * 1.5, center[1] + radius * 1.2, center[2] + radius * 2.5)
+    light.SetFocalPoint(*center)
+    light.SetIntensity(0.9)
+    renderer.AddLight(light)
+
+    render_window = vtk.vtkRenderWindow()
+    render_window.AddRenderer(renderer)
+    render_window.SetOffScreenRendering(True)
+    render_window.SetSize(900, 700)
+    render_window.Render()
+
+    w2i = vtk.vtkWindowToImageFilter()
+    w2i.SetInput(render_window)
+    w2i.Update()
+
+    png_writer = vtk.vtkPNGWriter()
+    png_writer.SetFileName(str(out_path))
+    png_writer.SetInputConnection(w2i.GetOutputPort())
+    png_writer.Write()
+
+
+def _render_mesh_matplotlib(mesh_path: Path, out_path: Path) -> None:
+    vertices, faces, colors = _parse_ascii_ply_mesh(mesh_path)
+
+    fig = plt.figure(figsize=(8, 6), dpi=150)
+    ax = fig.add_subplot(1, 1, 1, projection="3d")
+
+    if faces.size > 0:
+        tris = vertices[faces]
+        if colors is not None:
+            face_colors = colors[faces].mean(axis=1) / 255.0
+        else:
+            face_colors = np.full((faces.shape[0], 3), 0.75, dtype=np.float32)
+        if face_colors.shape[1] == 3:
+            alpha = np.full((face_colors.shape[0], 1), 1.0, dtype=np.float32)
+            face_colors = np.concatenate([face_colors, alpha], axis=1)
+        collection = Poly3DCollection(tris, facecolors=face_colors, edgecolors=(0.3, 0.3, 0.3, 0.4), linewidths=0.2)
+        ax.add_collection3d(collection)
+    else:
+        ax.scatter(vertices[:, 0], vertices[:, 1], vertices[:, 2], c=vertices[:, 2], cmap="viridis", s=2)
+
+    mins = vertices.min(axis=0)
+    maxs = vertices.max(axis=0)
+    centers = (mins + maxs) * 0.5
+    spans = maxs - mins
+    max_range = spans.max() if np.any(spans > 0) else 1.0
+
+    ax.set_xlim(centers[0] - max_range * 0.6, centers[0] + max_range * 0.6)
+    ax.set_ylim(centers[1] - max_range * 0.6, centers[1] + max_range * 0.6)
+    ax.set_zlim(centers[2] - max_range * 0.6, centers[2] + max_range * 0.6)
+
+    ax.view_init(elev=35.0, azim=-45.0)
+    ax.set_box_aspect((spans[0] + 1e-6, spans[1] + 1e-6, spans[2] + 1e-6))
+    ax.set_facecolor((1.0, 1.0, 1.0))
+    for axis in (ax.xaxis, ax.yaxis, ax.zaxis):
+        axis.set_ticks([])
+    ax.grid(False)
+    ax.set_title("Raw Mesh Perspective", pad=12)
+
+    fig.patch.set_facecolor("white")
+    fig.tight_layout(pad=0.1)
+    fig.savefig(out_path, dpi=150, bbox_inches="tight", pad_inches=0.02)
+    plt.close(fig)
 
 
 def _load_points(path: Path) -> np.ndarray:
@@ -187,6 +322,25 @@ def render_points(name: str, xyz: np.ndarray, max_points: int = 200_000) -> Path
     return out_path
 
 
+def render_raw_mesh(name: str, mesh_path: Path, overwrite: bool) -> Path:
+    image_path = IMAGE_DIR / f"{name}.png"
+    if image_path.exists() and not overwrite:
+        return image_path
+
+    if mesh_path is None:
+        raise ValueError("Raw mesh rendering requires a mesh path")
+
+    if _HAVE_VTK and vtk is not None:
+        try:
+            _render_mesh_vtk(mesh_path, image_path)
+            return image_path
+        except Exception as exc:
+            logging.warning("VTK rendering failed for %s: %s; falling back to matplotlib", mesh_path, exc)
+
+    _render_mesh_matplotlib(mesh_path, image_path)
+    return image_path
+
+
 def generate_examples(names: List[str], overwrite_outputs: bool, log_level: str, *, full: bool = False) -> None:
     _ensure_dirs()
     example_list = FULL_EXAMPLES if full else PREVIEW_EXAMPLES
@@ -198,13 +352,8 @@ def generate_examples(names: List[str], overwrite_outputs: bool, log_level: str,
             logging.warning("Skipping '%s' (no config or mesh path provided)", spec.name)
             continue
         if spec.config_path is None:
-            image_path = IMAGE_DIR / f"{spec.name}.png"
-            if image_path.exists() and not overwrite_outputs:
-                logging.info("Skipping %s (image exists)", spec.name)
-                continue
             logging.info("Rendering raw mesh for '%s'", spec.name)
-            xyz = _load_mesh_vertices(spec.mesh_path)  # type: ignore[arg-type]
-            image_path = render_points(spec.name, xyz)
+            image_path = render_raw_mesh(spec.name, spec.mesh_path, overwrite_outputs)  # type: ignore[arg-type]
             logging.info("Saved %s", image_path)
             continue
 

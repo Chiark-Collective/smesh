@@ -160,8 +160,8 @@ def generate_mesh(preset: str, size: float, path: Path) -> None:
 
     if preset == "preview":
         plane = _grid_plane(size=size, divisions=10, z=0.0, color=(185, 200, 185))
-        ramp = _ramp(length=size * 0.6, width=size * 0.3, height=size * 0.2, color=(210, 170, 130))
-        ramp_vertices = ramp[0] + np.array([0.0, -size * 0.1, 0.0], dtype=np.float32)
+        ramp = _ramp(length=size * 0.5, width=size * 0.3, height=size * 0.2, color=(210, 170, 130))
+        ramp_vertices = ramp[0] + np.array([-size * 0.2, -size * 0.08, 0.0], dtype=np.float32)
         box = _box(center=(size * 0.2, size * 0.15, size * 0.2), size=(size * 0.25, size * 0.25, size * 0.4), color=(180, 190, 240))
         parts = [
             plane,

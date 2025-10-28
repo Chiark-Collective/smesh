@@ -132,6 +132,15 @@ writer = LasWriter("examples/outputs/aerial_sdk.las", compress=False)
 sampler.run_to_writer(writer, bundles)
 ```
 
+If you already have a YAML scenario, you can now run it directly from Python:
+
+```python
+from smesh.sdk import sample_from_config
+
+result = sample_from_config("examples/configs/preview/aerial_lidar_preview.yaml")
+print(result.output_path, result.stats["points"])
+```
+
 ## Output writers
 
 - `LasWriter` streams directly to disk batch-by-batch (compression optional).

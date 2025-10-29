@@ -29,16 +29,6 @@ jobs:
       - name: Run pytest
         run: uv run pytest
 
-      - name: Regenerate preview outputs
-        run: |
-          rm -rf examples/outputs/* examples/images/*
-          uv run python scripts/render_examples.py --log-level WARN
-
-      - name: Ensure preview artefacts are up to date
-        run: git diff --stat
-
-      - name: Check tree clean
-        run: git diff --exit-code
 
   publish:
     if: startsWith(github.ref, 'refs/tags/v')

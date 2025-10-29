@@ -6,13 +6,6 @@ Sample points from a Mesh. *Smesh*.
 
 Yeah, it wasn't my best day. But it sounds utterly filthy, which I enjoy.
 
-- `MeshScene` (mesh IO + attribute probing via VTK)
-- `Intersector` (VTK OBBTree + optional Embree via `trimesh[ray]`)
-- `PointBatch` container
-- `AttributeComputer` plug-ins (range, incidence, scan angle, returns, intensity, gps time, color/normal probe, beam footprint)
-- `LasWriter` with **streaming** support and dynamic ExtraBytes
-- `Sampler` orchestrator which glues everything together
-
 ## Installation
 
 You wouldn't guess:
@@ -145,6 +138,15 @@ from smesh.sdk import sample_from_config
 result = sample_from_config("examples/configs/preview/aerial_lidar_preview.yaml")
 print(result.output_path, result.stats["points"])
 ```
+This is built from a bunch of components that i've *smeshed* together mostly with vibes so don't ask me any detailed questions. 
+Here's what the computer said:
+
+- `MeshScene` (mesh IO + attribute probing via VTK)
+- `Intersector` (VTK OBBTree + optional Embree via `trimesh[ray]`)
+- `PointBatch` container
+- `AttributeComputer` plug-ins (range, incidence, scan angle, returns, intensity, gps time, color/normal probe, beam footprint)
+- `LasWriter` with **streaming** support and dynamic ExtraBytes
+- `Sampler` orchestrator which glues everything together
 
 ## Output writers
 

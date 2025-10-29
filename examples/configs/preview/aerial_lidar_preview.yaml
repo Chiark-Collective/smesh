@@ -5,18 +5,19 @@ trajectory:
   kind: lawnmower
   altitude_m: 40.0
   speed_mps: 20.0
-  line_spacing_m: 6.0
+  line_spacing_m: 4.0
   heading_deg: 0.0
 pattern:
   kind: oscillating
-  fov_deg: 50.0
-  line_rate_hz: 20.0
-  pulses_per_line: 200
+  fov_deg: 110.0
+  line_rate_hz: 25.0
+  pulses_per_line: 600
 sensor:
   kind: lidar
   max_range_m: 200.0
   multi_return: true
   beam_divergence_mrad: 0.4
+  num_lines: 60
 noise:
   kind: lidar
   sigma_range_m: 0.05

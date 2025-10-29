@@ -10,7 +10,7 @@ trajectory:
   heading_deg: 90.0
 pattern:
   kind: spinning
-  vertical_angles_deg: [-10.0, -5.0, 0.0, 5.0, 10.0]
+  vertical_angles_deg: [-25.0, -15.0, -5.0, 5.0, 12.0]
   rpm: 180.0
   prf_hz: 1200
 sensor:

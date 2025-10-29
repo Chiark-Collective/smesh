@@ -207,6 +207,12 @@ class VTKIntersector:
         # Reusable objects
         isect_pts = vtk.vtkPoints()
         cell_ids = vtk.vtkIdList()
+        make_scalar = getattr(vtk, "mutable", None)
+        if make_scalar is None:
+            make_scalar = vtk.reference
+
+        def _vtk_value(obj: Any) -> Any:
+            return obj.get() if hasattr(obj, "get") else obj
 
         for i in range(n_rays):
             o = origins[i]
@@ -244,18 +250,18 @@ class VTKIntersector:
                 hit_counts[i] = len(pts)
             else:
                 # Generic cell locator: do first-hit only
-                t = vtk.reference(0.0)
+                t = make_scalar(0.0)
                 pt = [0.0, 0.0, 0.0]
                 pcoords = [0.0, 0.0, 0.0]
-                sub_id = vtk.reference(0)
-                cell_id = vtk.reference(0)
+                sub_id = make_scalar(0)
+                cell_id = make_scalar(0)
                 code = locator.IntersectWithLine(p0, p1, 1e-6, t, pt, pcoords, sub_id, cell_id)
                 if code == 0:
                     continue
                 points_list.append(list(pt))
                 distances_list.append(float(np.linalg.norm(np.asarray(pt) - o)))
                 ray_index_list.append(i)
-                cell_ids_list.append(int(cell_id))
+                cell_ids_list.append(int(_vtk_value(cell_id)))
                 hit_counts[i] = 1
 
         if len(points_list) == 0:
@@ -323,6 +329,12 @@ class EmbreeIntersector:
             ray_ids = ray_ids[mask]
             tri_ids = tri_ids[mask]
             dists = dists[mask]
+            if ray_ids.size:
+                order = np.lexsort((dists, ray_ids))
+                locs = locs[order]
+                ray_ids = ray_ids[order]
+                tri_ids = tri_ids[order]
+                dists = dists[order]
 
             # Count per-ray
             hit_counts = np.zeros((origins.shape[0],), dtype=np.int64)

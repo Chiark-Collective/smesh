@@ -144,11 +144,8 @@ class SpinningPattern(ScanPattern):
                 meta_pulse.append(pulse_idx)
 
         dirs = ensure_unit_vectors(np.asarray(dirs_list, dtype=np.float64))
-        rel_time = (
-            start_time_s
-            + np.repeat(times, len(self.vertical_angles_deg))
-            + step_index * self._rev_period
-        )
+        # Relative offsets stay within a single revolution; the caller adds revolution timing.
+        rel_time = start_time_s + np.repeat(times, len(self.vertical_angles_deg))
         meta = {
             "scan_angle_deg": np.asarray(meta_scan_angle, dtype=np.float32),
             "channel_id": np.asarray(meta_channel, dtype=np.uint16),

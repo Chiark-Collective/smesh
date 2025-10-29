@@ -7,10 +7,12 @@ from typing import Iterable, List, Optional
 import numpy as np
 import typer
 
+from ..core.exporter import LasWriter, NpzWriter, PlyWriter
 from ..config import ScenarioConfig, load_config
 from ..core.sampler import Sampler, SamplerConfig
 from ..core.scene import MeshScene
 from ..examples.synthetic import generate_mesh
+from ..motion.trajectory import LawnmowerTrajectory
 from ..runtime.builders import (
     build_noise,
     build_pattern,
@@ -18,6 +20,9 @@ from ..runtime.builders import (
     build_trajectory,
     build_writer,
 )
+from ..sensors.lidar import LidarSensor
+from ..sensors.noise import LidarNoise
+from ..sensors.patterns import OscillatingMirrorPattern
 
 app = typer.Typer(help="Smesh sampling utilities")
 mesh_app = typer.Typer(help="Synthetic mesh helpers")
@@ -147,8 +152,8 @@ def sample_lidar_cli(
 ) -> None:
     """Quick aerial-style LiDAR sampling driven entirely from CLI options."""
 
-    if keep_prob < 0.0 or keep_prob > 1.0:
-        raise typer.BadParameter("keep_prob must be within [0, 1].", param_hint="--keep-prob")
+    if keep_prob <= 0.0 or keep_prob > 1.0:
+        raise typer.BadParameter("keep_prob must be within (0, 1].", param_hint="--keep-prob")
     allowed_modes = {"above_top", "above_ground", "absolute"}
     if altitude_mode not in allowed_modes:
         raise typer.BadParameter(f"altitude_mode must be one of {sorted(allowed_modes)}.", param_hint="--altitude-mode")

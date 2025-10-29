@@ -159,21 +159,16 @@ def generate_mesh(preset: str, size: float, path: Path) -> None:
         return
 
     if preset == "preview":
-        plane_vertices, plane_faces, plane_colors = _grid_plane(size=size, divisions=10, z=0.0, color=(185, 200, 185))
+        plane_vertices, plane_faces, plane_colors = _grid_plane(size=size, divisions=20, z=0.0, color=(185, 200, 185))
         ramp = _ramp(length=size * 0.45, width=size * 0.28, height=size * 0.2, color=(210, 170, 130))
         ramp_vertices = ramp[0] + np.array([-size * 0.2, -size * 0.08, 0.0], dtype=np.float32)
-        ramp_xy_min = ramp_vertices[:, :2].min(axis=0)
-        ramp_xy_max = ramp_vertices[:, :2].max(axis=0)
-        clearance = size * 0.05
-        tri_centers = plane_vertices[plane_faces][:, :, :2].mean(axis=1)
-        inside_x = (tri_centers[:, 0] >= ramp_xy_min[0] - clearance) & (tri_centers[:, 0] <= ramp_xy_max[0] + clearance)
-        inside_y = (tri_centers[:, 1] >= ramp_xy_min[1] - clearance) & (tri_centers[:, 1] <= ramp_xy_max[1] + clearance)
-        keep = ~(inside_x & inside_y)
-        plane = (plane_vertices, plane_faces[keep], plane_colors)
+        # Drop the ramp base to keep the ground mesh continuous.
+        ramp_faces = ramp[1][2:]
+        plane = (plane_vertices, plane_faces, plane_colors)
         box = _box(center=(size * 0.2, size * 0.15, size * 0.2), size=(size * 0.25, size * 0.25, size * 0.4), color=(180, 190, 240))
         parts = [
             plane,
-            (ramp_vertices, ramp[1], ramp[2]),
+            (ramp_vertices, ramp_faces, ramp[2]),
             box,
         ]
         vertices, faces, colors, normals = _merge_parts(parts)

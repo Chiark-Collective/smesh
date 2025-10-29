@@ -3,12 +3,12 @@ mesh:
   path: ../../meshes/preview_scene.ply
 trajectory:
   kind: static
-  xyz: [0.0, -8.0, 6.0]
+  xyz: [0.0, -11.0, 9.0]
 pattern:
   kind: raster
-  az_range_deg: [-35.0, 35.0]
-  el_range_deg: [-30.0, 55.0]
-  step_deg: 5.0
+  az_range_deg: [-100.0, 100.0]
+  el_range_deg: [-75.0, 20.0]
+  step_deg: 2.0
 sensor:
   kind: totalstation
   max_range_m: 120.0

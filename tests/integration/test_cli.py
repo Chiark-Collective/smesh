@@ -192,6 +192,76 @@ def test_mesh_generate_command(tmp_path: Path) -> None:
     assert second == "format ascii 1.0"
 
 
+def test_cli_sample_lidar_smoke(tmp_path: Path) -> None:
+    mesh_path = tmp_path / "plane.ply"
+    _write_ascii_ply(mesh_path)
+
+    out_path = tmp_path / "quick_scan.npz"
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "sample-lidar",
+            "--mesh",
+            str(mesh_path),
+            "--output",
+            str(out_path),
+            "--altitude-m",
+            "5.0",
+            "--line-spacing-m",
+            "1.0",
+            "--speed-mps",
+            "5.0",
+            "--pulses-per-line",
+            "8",
+            "--line-rate-hz",
+            "5.0",
+            "--num-lines",
+            "1",
+            "--batch-size",
+            "16",
+            "--keep-prob",
+            "1.0",
+            "--max-range-m",
+            "20.0",
+            "--sigma-range-m",
+            "0.0",
+            "--sigma-angle-deg",
+            "0.0",
+        ],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    assert out_path.exists()
+    cloud = np.load(out_path)
+    assert cloud["xyz"].shape[0] > 0
+    assert "gps_time" in cloud
+    assert cloud["gps_time"].shape[0] == cloud["xyz"].shape[0]
+
+
+def test_cli_sample_lidar_rejects_zero_keep_prob(tmp_path: Path) -> None:
+    mesh_path = tmp_path / "plane.ply"
+    _write_ascii_ply(mesh_path)
+    out_path = tmp_path / "bad_scan.npz"
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "sample-lidar",
+            "--mesh",
+            str(mesh_path),
+            "--output",
+            str(out_path),
+            "--keep-prob",
+            "0.0",
+        ],
+    )
+
+    assert result.exit_code != 0
+    combined = result.stdout + result.stderr
+    assert "within (0, 1]" in combined
+
+
 def test_cli_total_station(tmp_path: Path) -> None:
     mesh_path = tmp_path / "plane.ply"
     _write_ascii_ply(mesh_path)

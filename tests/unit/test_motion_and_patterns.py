@@ -88,6 +88,32 @@ def test_spinning_pattern_channel_metadata() -> None:
     assert sample.meta["scan_angle_deg"].shape[0] == dirs.shape[0]
 
 
+def test_spinning_pattern_time_offsets_per_revolution() -> None:
+    pattern = SpinningPattern(vertical_angles_deg=[-5.0, 0.0, 5.0], rpm=600.0, prf_hz=6000)
+    cadence = pattern.cadence_s()
+    pose = Pose.from_xyz_rpy((0.0, 0.0, 50.0), (0.0, 0.0, 0.0))
+    traj = StaticTrajectory(pose)
+    sensor = LidarSensor(
+        pattern=pattern,
+        trajectory=traj,
+        noise=None,
+        max_range_m=500.0,
+        multi_return=True,
+    )
+    sensor.start_time_s = 0.0
+    sensor.end_time_s = 2.0 * cadence
+
+    rng = np.random.default_rng(123)
+    batches = list(sensor.batches(rng))
+    assert len(batches) == 3  # start, +cadence, +2*cadence
+    for idx, batch in enumerate(batches):
+        times = batch.bundle.meta["gps_time"]
+        lower = idx * cadence
+        upper = lower + cadence + 1e-9
+        assert np.all(times >= lower)
+        assert np.all(times < upper)
+
+
 def test_raster_pattern_serpentine_order() -> None:
     pattern = RasterAzElPattern(az_range_deg=(0.0, 10.0), el_range_deg=(0.0, 5.0), step_deg=5.0)
     sample = pattern.sample(step_index=0, start_time_s=0.0)

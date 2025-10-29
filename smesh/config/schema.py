@@ -170,6 +170,7 @@ class ScenarioConfig(BaseModel):
                     "scan_angle",
                     "intensity",
                     "returns",
+                    "gps_time",
                 ]
         elif self.type == "totalstation":
             if not isinstance(self.sensor, TotalStationSensorConfig):

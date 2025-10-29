@@ -275,6 +275,7 @@ def main() -> None:
         default=root / "examples/images/readme_preview.png",
         help="Optional static preview (requires kaleido).",
     )
+    parser.add_argument("--skip-png", action="store_true", help="Skip writing the static PNG preview.")
     parser.add_argument(
         "--max-points",
         type=int,
@@ -307,7 +308,7 @@ def main() -> None:
     args.output_html.parent.mkdir(parents=True, exist_ok=True)
     fig.write_html(args.output_html, include_plotlyjs="cdn", full_html=True)
 
-    if args.output_png:
+    if args.output_png and not args.skip_png:
         try:
             import plotly.io as pio
 

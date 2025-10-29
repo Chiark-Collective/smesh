@@ -5,7 +5,7 @@ trajectory:
   kind: lawnmower
   altitude_m: 40.0
   speed_mps: 20.0
-  line_spacing_m: 4.0
+  line_spacing_m: 1.2
   heading_deg: 0.0
 pattern:
   kind: oscillating

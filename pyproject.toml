@@ -8,9 +8,9 @@ version = "0.0.5"
 description = "Smesh – Mesh→Point-Cloud Sensor Simulator (core skeleton)"
 readme = "README.md"
 requires-python = ">=3.9"
-license = {text = "Apache-2.0"}
+license = {text = "AGPL-v3"}
 authors = [
-  { name="Smesh Authors", email="example@example.com" }
+  { name="Mawhrin-Skel", email="slapdrone@proton.me" }
 ]
 dependencies = [
   "numpy>=1.23",
